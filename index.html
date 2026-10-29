@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="format-detection" content="telephone=no">
+  <title>今天吃什么</title>
+  <style>
+    :root {
+      --bg: #fff8f0;
+      --card: #ffffff;
+      --ink: #3d2b1f;
+      --muted: #8a6a55;
+      --line: #f0d9cc;
+      --accent: #e85d4c;
+      --accent-dark: #d14e3e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
+    }
+    main {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 20px 16px calc(24px + env(safe-area-inset-bottom));
+    }
+    h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .hint {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .card {
+      margin-top: 16px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      text-align: center;
+      padding: 22px 12px 14px;
+    }
+    #result {
+      min-height: 48px;
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1.3;
+    }
+    #status {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    button, input {
+      font: inherit;
+    }
+    button {
+      border: 0;
+      border-radius: 12px;
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      min-height: 46px;
+      padding: 0 10px;
+    }
+    button:disabled {
+      opacity: 0.45;
+    }
+    .primary {
+      flex: 1.2;
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+    .primary:active:not(:disabled) {
+      background: var(--accent-dark);
+    }
+    .ghost {
+      flex: 1;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 14px 0 4px;
+      font-size: 14px;
+    }
+    .section {
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    ul {
+      list-style: none;
+      margin: 8px 0 0;
+      padding: 0;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 12px 12px 12px 14px;
+      border-top: 1px solid var(--line);
+      font-size: 16px;
+    }
+    li:first-child { border-top: 0; }
+    .empty {
+      padding: 18px 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .del {
+      min-height: 32px;
+      padding: 0 10px;
+      color: var(--accent);
+      background: transparent;
+    }
+    .editor {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      min-height: 46px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      padding: 0 12px;
+      background: #fff;
+    }
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      margin-top: 14px;
+    }
+    .linkish {
+      background: transparent;
+      min-height: 40px;
+      color: var(--muted);
+    }
+    #history {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>今天吃什么</h1>
+    <p class="hint">两个人各能否决一次。否决用完，抽到什么就吃什么。菜单保存在这台手机上。</p>
+    <section class="card">
+      <div id="result">？</div>
+      <div id="status">点下面的按钮开始</div>
+    </section>
+    <div class="row">
+      <button class="primary" id="draw" type="button">开始抽签</button>
+      <button class="ghost" id="me" type="button">我吃不了</button>
+      <button class="ghost" id="buddy" type="button">搭子吃不了</button>
+    </div>
+    <label class="check">
+      <input id="avoid" type="checkbox" checked>
+      抽签时避开最近 3 次
+    </label>
+    <p class="section">候选菜单</p>
+    <ul id="list"></ul>
+    <form class="editor" id="editor">
+      <input id="name" type="text" maxlength="30" placeholder="输入常吃的店，回车添加" enterkeyhint="done">
+      <button type="submit">添加</button>
+    </form>
+    <div class="foot">
+      <button class="linkish" id="clear-history" type="button">清空最近记录</button>
+      <p id="history">最近还没抽过</p>
+    </div>
+  </main>
+  <script>
+    const RECENT_LIMIT = 3;
+    const HISTORY_KEEP = 12;
+    const SEED = [
+      "肥锅米线",
+      "沙县小吃",
+      "兰州拉面",
+      "陕西面馆",
+      "江西小炒",
+      "包子",
+      "大食堂",
+      "刘文祥",
+      "塔斯丁",
+      "KFC",
+      "必胜客",
+      "麦当劳",
+      "山东水饺",
+      "有口福",
+      "猪脚饭"
+    ];
+
+    const resultEl = document.querySelector("#result");
+    const statusEl = document.querySelector("#status");
+    const listEl = document.querySelector("#list");
+    const historyEl = document.querySelector("#history");
+    const drawBtn = document.querySelector("#draw");
+    const meBtn = document.querySelector("#me");
+    const buddyBtn = document.querySelector("#buddy");
+    const avoidEl = document.querySelector("#avoid");
+    const nameEl = document.querySelector("#name");
+
+    let options = loadList("meal-options", SEED);
+    let history = loadList("meal-history", []);
+    let excluded = new Set();
+    let myVeto = 1;
+    let buddyVeto = 1;
+    let spinning = false;
+    let settled = false;
+    let winner = "";
+    let note = "";
+    let timer = null;
+
+    function loadList(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return fallback.slice();
+        const data = JSON.parse(raw);
+        if (!Array.isArray(data)) return fallback.slice();
+        return data.map((item) => String(item).trim()).filter(Boolean);
+      } catch (err) {
+        return fallback.slice();
+      }
+    }
+
+    function saveOptions() {
+      localStorage.setItem("meal-options", JSON.stringify(options));
+    }
+
+    function saveHistory() {
+      localStorage.setItem("meal-history", JSON.stringify(history.slice(0, HISTORY_KEEP)));
+    }
+
+    function renderList() {
+      listEl.replaceChildren();
+      if (!options.length) {
+        const empty = document.createElement("li");
+        empty.className = "empty";
+        empty.textContent = "还没有店。在下面输入常吃的，再添加。";
+        listEl.appendChild(empty);
+        return;
+      }
+      options.forEach((item, index) => {
+        const li = document.createElement("li");
+        const name = document.createElement("span");
+        name.textContent = item;
+        const del = document.createElement("button");
+        del.className = "del";
+        del.type = "button";
+        del.textContent = "删除";
+        del.addEventListener("click", () => {
+          const removed = options.splice(index, 1)[0];
+          excluded.delete(removed);
+          saveOptions();
+          renderList();
+        });
+        li.append(name, del);
+        listEl.appendChild(li);
+      });
+    }
+
+    function renderHistory() {
+      if (!history.length) {
+        historyEl.textContent = "最近还没抽过";
+        return;
+      }
+      historyEl.textContent = "最近吃过：" + history.slice(0, RECENT_LIMIT).join("、");
+    }
+
+    function refreshVeto() {
+      meBtn.disabled = spinning || myVeto <= 0;
+      buddyBtn.disabled = spinning || buddyVeto <= 0;
+      drawBtn.disabled = spinning;
+    }
+
+    function commit() {
+      if (!settled || !options.includes(winner)) return;
+      history.unshift(winner);
+      history = history.slice(0, HISTORY_KEEP);
+      saveHistory();
+      settled = false;
+      renderHistory();
+    }
+
+    function pick(pool) {
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    function beginSpin(reason) {
+      if (spinning) return;
+      if (!options.length) {
+        statusEl.textContent = "先添加至少一个吃的。";
+        return;
+      }
+      const blocked = new Set(excluded);
+      let nextNote = reason;
+      const recent = new Set();
+      if (avoidEl.checked) {
+        history.slice(0, RECENT_LIMIT).forEach((item) => {
+          if (!blocked.has(item)) recent.add(item);
+        });
+      }
+      let pool = options.filter((item) => !blocked.has(item) && !recent.has(item));
+      if (!pool.length && recent.size) {
+        nextNote = reason + "，最近吃过的也放回来了";
+        pool = options.filter((item) => !blocked.has(item));
+      }
+      if (!pool.length) {
+        excluded.clear();
+        nextNote = "这轮候选都否决完了，重新抽";
+        pool = options.slice();
+      }
+      settled = false;
+      winner = pick(pool);
+      note = nextNote;
+      spinning = true;
+      refreshVeto();
+      statusEl.textContent = "抽签中…";
+      let ticks = 0;
+      const spin = () => {
+        ticks += 1;
+        resultEl.textContent = ticks > 14 ? winner : pick(options);
+        if (ticks >= 18) {
+          finishSpin();
+          return;
+        }
+        timer = setTimeout(spin, 40 + ticks * 12);
+      };
+      spin();
+    }
+
+    function finishSpin() {
+      timer = null;
+      resultEl.textContent = winner;
+      spinning = false;
+      settled = true;
+      refreshVeto();
+      const left = [];
+      if (myVeto) left.push("你还能否决 1 次");
+      if (buddyVeto) left.push("搭子还能否决 1 次");
+      const tail = left.length ? left.join("，") : "否决用完了，就吃这个";
+      statusEl.textContent = note + "。" + tail;
+    }
+
+    function startDraw() {
+      commit();
+      excluded.clear();
+      myVeto = 1;
+      buddyVeto = 1;
+      refreshVeto();
+      beginSpin("新的一轮");
+    }
+
+    function veto(who) {
+      const current = resultEl.textContent;
+      if (current === "？" || spinning) {
+        statusEl.textContent = "先抽一次，再决定吃不吃得了。";
+        return;
+      }
+      if (who === "me") {
+        if (myVeto <= 0) return;
+        myVeto -= 1;
+      } else {
+        if (buddyVeto <= 0) return;
+        buddyVeto -= 1;
+      }
+      if (options.includes(current)) excluded.add(current);
+      refreshVeto();
+      beginSpin((who === "me" ? "你" : "饭搭子") + "否决了「" + current + "」");
+    }
+
+    document.querySelector("#draw").addEventListener("click", startDraw);
+    meBtn.addEventListener("click", () => veto("me"));
+    buddyBtn.addEventListener("click", () => veto("buddy"));
+    document.querySelector("#editor").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const name = nameEl.value.trim();
+      if (!name) return;
+      if (options.includes(name)) {
+        statusEl.textContent = "「" + name + "」已经在菜单里。";
+        return;
+      }
+      options.push(name);
+      saveOptions();
+      nameEl.value = "";
+      renderList();
+    });
+    document.querySelector("#clear-history").addEventListener("click", () => {
+      history = [];
+      saveHistory();
+      renderHistory();
+    });
+    window.addEventListener("pagehide", () => {
+      if (!spinning) commit();
+    });
+
+    renderList();
+    renderHistory();
+    refreshVeto();
+  </script>
+</body>
+</html>
